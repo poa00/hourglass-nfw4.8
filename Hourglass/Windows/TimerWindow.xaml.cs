@@ -20,6 +20,7 @@ namespace Hourglass.Windows
     using Hourglass.Managers;
     using Hourglass.Properties;
     using Hourglass.Timing;
+    using System.Collections.Generic;
 
     /// <summary>
     /// The mode of a <see cref="TimerWindow"/>.
@@ -35,6 +36,82 @@ namespace Hourglass.Windows
         /// Indicates that the <see cref="TimerWindow"/> is displaying the status of a timer.
         /// </summary>
         Status
+    }
+
+    /// <summary>
+    /// The display text and corresponding values of a <see cref="NextTimerComboBox"/>.
+    /// </summary>
+    public class TimerTitleRepresentation
+    {
+        private string ActualValue = "";
+        private string DisplayText = Properties.Resources.TimerWindowNextTimerTextHint;
+
+        public TimerTitleRepresentation() { }
+        public TimerTitleRepresentation(string Value, string Text)
+        {
+            this.Value = Value;
+            this.DisplayText = Text;
+        }
+
+        /// <summary>
+        /// Gets or sets a value representing the text string used to access a timer that will be used as the next timer.  A Null value indicates that no Next Timer will be assigned.
+        /// </summary>
+        public String Value
+        {
+            get
+            {
+                return this.ActualValue;
+            }
+
+            set
+            {
+                this.ActualValue = value;
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets a value representing the text string diplayed to the end user that will be used to select the next timer. 
+        /// </summary>
+        public String Text
+        {
+            get
+            {
+                return this.DisplayText;
+            }
+
+            set
+            {
+                if ((value == null) || (value == ""))
+                {
+                    value = Properties.Resources.TimerWindowNextTimerTextHint;
+                }
+                this.DisplayText = value;
+            }
+        }
+
+        public override bool Equals(object obj)
+        {
+            //Check for null and compare run-time types.
+            if ((obj == null) || !this.GetType().Equals(obj.GetType()))
+            {
+                return false;
+            }
+            else
+            {
+                TimerTitleRepresentation test = (TimerTitleRepresentation)obj;
+                if ((test.Text == this.Text) && (test.Value == this.Value))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public override int GetHashCode()
+        {
+            string combinedData = this.Value + this.Text;
+            return combinedData.GetHashCode();
+        }
     }
 
     /// <summary>
@@ -88,6 +165,11 @@ namespace Hourglass.Windows
         /// Updates the app.
         /// </summary>
         public static readonly RoutedCommand UpdateCommand = new RoutedCommand();
+
+        /// <summary>
+        /// Saves timer.
+        /// </summary>
+        public static readonly RoutedCommand SaveCommand = new RoutedCommand();
 
         /// <summary>
         /// Exits input mode, enters input mode, or exits full-screen mode depending on the state of the window.
@@ -364,21 +446,7 @@ namespace Hourglass.Windows
                 }
 
                 this.isFullScreen = value;
-
-                if (this.isFullScreen)
-                {
-                    this.WindowStyle = WindowStyle.None;
-                    this.WindowState = WindowState.Normal; // Needed to put the window on top of the taskbar
-                    this.WindowState = WindowState.Maximized;
-                    this.ResizeMode = ResizeMode.NoResize;
-                }
-                else
-                {
-                    this.WindowStyle = WindowStyle.SingleBorderWindow;
-                    this.WindowState = this.restoreWindowState;
-                    this.ResizeMode = ResizeMode.CanResize;
-                }
-
+                this.UpdateWindowStyle();
                 this.OnPropertyChanged("IsFullScreen");
             }
         }
@@ -600,7 +668,9 @@ namespace Hourglass.Windows
         {
             this.Mode = TimerWindowMode.Input;
 
+            this.TitleTextBox.Text = this.Timer.Options.Title;
             this.TimerTextBox.Text = this.LastTimerStart != null ? this.LastTimerStart.ToString() : string.Empty;
+            this.SetNextTimerComboBoxSelectedValue(this.Timer.Options.NextTimerTitle);
 
             textBoxToFocus = textBoxToFocus ?? this.TimerTextBox;
             textBoxToFocus.SelectAll();
@@ -694,7 +764,8 @@ namespace Hourglass.Windows
                 || this.ResetButton.Unfocus()
                 || this.CloseButton.Unfocus()
                 || this.CancelButton.Unfocus()
-                || this.UpdateButton.Unfocus();
+                || this.UpdateButton.Unfocus()
+                || this.SaveButton.Unfocus();
         }
 
         #endregion
@@ -708,6 +779,7 @@ namespace Hourglass.Windows
         {
             Watermark.SetHint(this.TitleTextBox, Properties.Resources.TimerWindowTitleTextHint);
             Watermark.SetHint(this.TimerTextBox, Properties.Resources.TimerWindowTimerTextHint);
+            Watermark.SetHint(this.NextTimerComboBox, Properties.Resources.TimerWindowNextTimerTextHint);
 
             this.StartButton.Content = Properties.Resources.TimerWindowStartButtonContent;
             this.PauseButton.Content = Properties.Resources.TimerWindowPauseButtonContent;
@@ -717,8 +789,46 @@ namespace Hourglass.Windows
             this.CloseButton.Content = Properties.Resources.TimerWindowCloseButtonContent;
             this.CancelButton.Content = Properties.Resources.TimerWindowCancelButtonContent;
             this.UpdateButton.Content = Properties.Resources.TimerWindowUpdateButtonContent;
+            this.SaveButton.Content = Properties.Resources.TimerWindowSaveButtonContent;
+
+            this.PopulateNextTimerComboBox();
         }
 
+        /// <summary>
+        /// Populate the Next Timer Combo Box with the names of the saved timers.
+        /// </summary>
+        private void PopulateNextTimerComboBox()
+        {
+            List<TimerTitleRepresentation> savedTimers = new List<TimerTitleRepresentation>();
+            foreach (Timer t in TimerManager.Instance.SavedTimers)
+            {
+                TimerTitleRepresentation timerRepresentation = new TimerTitleRepresentation(t.Title, t.Title);
+                savedTimers.Add(timerRepresentation);
+            }
+
+            TimerTitleRepresentation defaultValue = new TimerTitleRepresentation();
+            savedTimers.Insert(0, defaultValue);
+            this.NextTimerComboBox.ItemsSource = savedTimers;
+        }
+
+        /// <summary>
+        /// Sets the currently selected value of the Next Timer Combo Box.
+        /// </summary>
+        private void SetNextTimerComboBoxSelectedValue(string selectedTimerTitle)
+        {
+            TimerTitleRepresentation CurrentSelection;
+
+            if ((selectedTimerTitle == null) || (selectedTimerTitle == ""))
+            {
+                CurrentSelection = new TimerTitleRepresentation();
+            }
+            else
+            {
+                CurrentSelection = new TimerTitleRepresentation(selectedTimerTitle, selectedTimerTitle);
+            }
+
+            this.NextTimerComboBox.SelectedItem = CurrentSelection;
+        }
         #endregion
 
         #region Private Methods (Animations and Sounds)
@@ -1015,14 +1125,39 @@ namespace Hourglass.Windows
         }
 
         /// <summary>
+        /// Returns the progress bar value for the current timer.
+        /// </summary>
+        /// <returns>The progress bar value for the current timer.</returns>
+        private double GetProgressBarValue()
+        {
+            if (this.Options.ReverseProgressBar)
+            {
+                return this.Timer.TimeElapsedAsPercentage ?? 100.0;
+            }
+            else
+            {
+                return this.Timer.TimeLeftAsPercentage ?? 0.0;
+            }
+        }
+
+        /// <summary>
         /// Updates the controls bound to timer properties.
         /// </summary>
         private void UpdateBoundControls()
         {
+            if (String.IsNullOrWhiteSpace(this.TitleTextBox.Text))
+            {
+                this.SaveButton.IsEnabled = false;
+            }
+            else
+            {
+                this.SaveButton.IsEnabled = true;
+            }
+
             switch (this.Mode)
             {
                 case TimerWindowMode.Input:
-                    this.ProgressBar.Value = this.Timer.TimeLeftAsPercentage ?? 0.0;
+                    this.ProgressBar.Value = this.GetProgressBarValue();
                     this.UpdateTaskbarProgress();
 
                     // Enable and disable command buttons as required
@@ -1038,23 +1173,48 @@ namespace Hourglass.Windows
                     // Restore the border, context menu, and watermark text that appear for the text boxes
                     this.TitleTextBox.BorderThickness = new Thickness(1);
                     this.TimerTextBox.BorderThickness = new Thickness(1);
+                    this.NextTimerComboBox.BorderThickness = new Thickness(1);
                     this.TitleTextBox.IsReadOnly = false;
                     this.TimerTextBox.IsReadOnly = false;
+                    this.NextTimerComboBox.IsEnabled = true;
                     Watermark.SetHint(this.TitleTextBox, Properties.Resources.TimerWindowTitleTextHint);
                     Watermark.SetHint(this.TimerTextBox, Properties.Resources.TimerWindowTimerTextHint);
+                    Watermark.SetHint(this.NextTimerComboBox, Properties.Resources.TimerWindowNextTimerTextHint);
 
                     this.Topmost = this.Options.AlwaysOnTop;
 
                     this.UpdateBoundTheme();
                     this.UpdateKeepAwake();
                     this.UpdateWindowTitle();
+                    this.UpdateWindowStyle();
                     return;
 
                 case TimerWindowMode.Status:
-                    this.TimerTextBox.Text = this.Timer.Options.ShowTimeElapsed
-                        ? this.Timer.TimeElapsedAsString
-                        : this.Timer.TimeLeftAsString;
-                    this.ProgressBar.Value = this.Timer.TimeLeftAsPercentage ?? 0.0;
+                    if (this.Timer.State == TimerState.Expired && !string.IsNullOrWhiteSpace(this.Timer.Options.Title) && !this.TitleTextBox.IsFocused)
+                    {
+                        this.TitleTextBox.TextChanged -= this.TitleTextBoxTextChanged;
+                        this.TitleTextBox.Text = this.Timer.Options.ShowTimeElapsed
+                            ? this.Timer.TimeElapsedAsString
+                            : this.Timer.TimeLeftAsString;
+                        this.TitleTextBox.TextChanged += this.TitleTextBoxTextChanged;
+
+                        this.TimerTextBox.Text = this.Timer.Options.Title;
+                        this.SetNextTimerComboBoxSelectedValue(this.Timer.Options.NextTimerTitle);
+                    }
+                    else
+                    {
+                        this.TitleTextBox.TextChanged -= this.TitleTextBoxTextChanged;
+                        this.TitleTextBox.Text = this.Timer.Options.Title;
+                        this.TitleTextBox.TextChanged += this.TitleTextBoxTextChanged;
+
+                        this.TimerTextBox.Text = this.Timer.Options.ShowTimeElapsed
+                            ? this.Timer.TimeElapsedAsString
+                            : this.Timer.TimeLeftAsString;
+
+                        this.SetNextTimerComboBoxSelectedValue(this.Timer.Options.NextTimerTitle);
+                    }
+
+                    this.ProgressBar.Value = this.GetProgressBarValue();
                     this.UpdateTaskbarProgress();
 
                     if (this.Options.LockInterface)
@@ -1072,10 +1232,13 @@ namespace Hourglass.Windows
                         // Hide the border, context menu, and watermark text that appear for the text boxes
                         this.TitleTextBox.BorderThickness = new Thickness(0);
                         this.TimerTextBox.BorderThickness = new Thickness(0);
+                        this.NextTimerComboBox.BorderThickness = new Thickness(0);
                         this.TitleTextBox.IsReadOnly = true;
                         this.TimerTextBox.IsReadOnly = true;
+                        this.NextTimerComboBox.IsEnabled = false;
                         Watermark.SetHint(this.TitleTextBox, null);
                         Watermark.SetHint(this.TimerTextBox, null);
+                        Watermark.SetHint(this.NextTimerComboBox, null);
                     }
                     else
                     {
@@ -1092,10 +1255,13 @@ namespace Hourglass.Windows
                         // Restore the border, context menu, and watermark text that appear for the text boxes
                         this.TitleTextBox.BorderThickness = new Thickness(1);
                         this.TimerTextBox.BorderThickness = new Thickness(1);
+                        this.NextTimerComboBox.BorderThickness = new Thickness(1);
                         this.TitleTextBox.IsReadOnly = false;
                         this.TimerTextBox.IsReadOnly = false;
+                        this.NextTimerComboBox.IsEnabled = true;
                         Watermark.SetHint(this.TitleTextBox, Properties.Resources.TimerWindowTitleTextHint);
                         Watermark.SetHint(this.TimerTextBox, Properties.Resources.TimerWindowTimerTextHint);
+                        Watermark.SetHint(this.NextTimerComboBox, Properties.Resources.TimerWindowNextTimerTextHint);
                     }
 
                     this.Topmost = this.Options.AlwaysOnTop;
@@ -1103,6 +1269,7 @@ namespace Hourglass.Windows
                     this.UpdateBoundTheme();
                     this.UpdateKeepAwake();
                     this.UpdateWindowTitle();
+                    this.UpdateWindowStyle();
                     return;
             }
         }
@@ -1114,7 +1281,7 @@ namespace Hourglass.Windows
         {
             this.InnerGrid.Background = this.Theme.BackgroundBrush;
             this.ProgressBar.Foreground = this.Theme.ProgressBarBrush;
-            this.ProgressBar.Background  = this.Theme.ProgressBackgroundBrush;
+            this.ProgressBar.Background = this.Theme.ProgressBackgroundBrush;
             this.InnerNotificationBorder.BorderBrush = this.Theme.ExpirationFlashBrush;
             this.OuterNotificationBorder.Background = this.Theme.ExpirationFlashBrush;
             this.TimerTextBox.Foreground = this.Theme.PrimaryTextBrush;
@@ -1123,6 +1290,8 @@ namespace Hourglass.Windows
             this.TitleTextBox.Foreground = this.Theme.SecondaryTextBrush;
             this.TitleTextBox.CaretBrush = this.Theme.SecondaryTextBrush;
             Watermark.SetHintBrush(this.TitleTextBox, this.Theme.SecondaryHintBrush);
+            this.NextTimerComboBox.Foreground = this.Theme.SecondaryTextBrush;
+            Watermark.SetHintBrush(this.NextTimerComboBox, this.Theme.SecondaryHintBrush);
             this.TimeExpiredLabel.Foreground = this.Theme.SecondaryTextBrush;
 
             foreach (Button button in this.ButtonPanel.GetAllVisualChildren().OfType<Button>())
@@ -1136,6 +1305,12 @@ namespace Hourglass.Windows
         /// </summary>
         private void UpdateTaskbarProgress()
         {
+            if (!this.Options.ShowProgressInTaskbar)
+            {
+                this.TaskbarItemInfo.ProgressState = TaskbarItemProgressState.None;
+                return;
+            }
+
             switch (this.Timer.State)
             {
                 case TimerState.Stopped:
@@ -1147,7 +1322,7 @@ namespace Hourglass.Windows
                     if (this.Timer.SupportsProgress)
                     {
                         this.TaskbarItemInfo.ProgressState = TaskbarItemProgressState.Normal;
-                        this.TaskbarItemInfo.ProgressValue = (this.Timer.TimeLeftAsPercentage ?? 0.0) / 100.0;
+                        this.TaskbarItemInfo.ProgressValue = this.GetProgressBarValue() / 100.0;
                     }
                     else
                     {
@@ -1161,7 +1336,7 @@ namespace Hourglass.Windows
                     if (this.Timer.SupportsProgress)
                     {
                         this.TaskbarItemInfo.ProgressState = TaskbarItemProgressState.Paused;
-                        this.TaskbarItemInfo.ProgressValue = (this.Timer.TimeLeftAsPercentage ?? 0.0) / 100.0;
+                        this.TaskbarItemInfo.ProgressValue = this.GetProgressBarValue() / 100.0;
                     }
                     else
                     {
@@ -1201,6 +1376,11 @@ namespace Hourglass.Windows
         {
             switch (this.Options.WindowTitleMode)
             {
+                case WindowTitleMode.None:
+                    // Although the title bar is hidden in this mode, the window title is still used for the Taskbar.
+                    this.Title = Properties.Resources.TimerWindowTitle;
+                    break;
+
                 case WindowTitleMode.ApplicationName:
                     this.Title = Properties.Resources.TimerWindowTitle;
                     break;
@@ -1314,6 +1494,58 @@ namespace Hourglass.Windows
                     }
 
                     break;
+            }
+        }
+
+        /// <summary>
+        /// Updates the window style.
+        /// </summary>
+        private void UpdateWindowStyle()
+        {
+            if (this.isFullScreen)
+            {
+                this.WindowStyle = WindowStyle.None;
+
+                if (this.WindowState != WindowState.Maximized)
+                {
+                    this.WindowState = WindowState.Normal; // Needed to put the window on top of the taskbar
+                    this.WindowState = WindowState.Maximized;
+                }
+
+                this.ResizeMode = ResizeMode.NoResize;
+
+                WindowChrome.SetWindowChrome(this, null);
+            }
+            else
+            {
+                this.WindowStyle = WindowStyle.SingleBorderWindow;
+
+                if (this.WindowState != WindowState.Minimized)
+                {
+                    this.WindowState = this.restoreWindowState;
+                }
+
+                this.ResizeMode = ResizeMode.CanResize;
+
+                if (this.Options.WindowTitleMode == WindowTitleMode.None)
+                {
+                    if (WindowChrome.GetWindowChrome(this)?.CaptionHeight != 0)
+                    {
+                        WindowChrome.SetWindowChrome(
+                            this,
+                            new WindowChrome
+                            {
+                                CaptionHeight = 0
+                            });
+                    }
+                }
+                else
+                {
+                    if (WindowChrome.GetWindowChrome(this) != null)
+                    {
+                        WindowChrome.SetWindowChrome(this, null);
+                    }
+                }
             }
         }
 
@@ -1590,6 +1822,41 @@ namespace Hourglass.Windows
         }
 
         /// <summary>
+        /// Invoked when the <see cref="SaveCommand"/> is executed.
+        /// </summary>
+        /// <param name="sender">The <see cref="TimerWindow"/>.</param>
+        /// <param name="e">The event data.</param>
+        private void SaveCommandExecuted(object sender, ExecutedRoutedEventArgs e)
+        {
+
+            // Make a copy of the current timer
+            Timer savedTimer = new Timer(this.Timer.ToTimerInfo());
+
+            // If the new timer does not have a valid TimerStart value then intialize the TimerStart value based on the UI state
+            if ((savedTimer.TimerStart == null) || (!savedTimer.TimerStart.IsValid))
+            {
+                TimerStart timerStart = TimerStart.FromString(this.TimerTextBox.Text);
+                if (timerStart == null)
+                {
+                    this.BeginValidationErrorAnimation();
+                    return;
+                }
+
+                savedTimer.Start(timerStart);
+                savedTimer.Pause();
+            }
+
+            // Set the copy state to saved, add it to the TimerManager list
+            savedTimer.Save();
+            TimerManager.Instance.Add(savedTimer);
+            
+            // Refresh Next Timer ComboBox values here
+            this.PopulateNextTimerComboBox();
+
+            this.SaveButton.Unfocus();
+        }
+
+        /// <summary>
         /// Invoked when the <see cref="UpdateCommand"/> is executed.
         /// </summary>
         /// <param name="sender">The <see cref="TimerWindow"/>.</param>
@@ -1680,7 +1947,15 @@ namespace Hourglass.Windows
         {
             if (e.Key == Key.Enter && this.Mode == TimerWindowMode.Status)
             {
-                this.TitleTextBox.Unfocus();
+                if (this.Timer.State == TimerState.Expired)
+                {
+                    this.SwitchToInputMode(this.TimerTextBox /* textBoxToFocus */);
+                }
+                else
+                {
+                    this.TitleTextBox.Unfocus();
+                }
+
                 e.Handled = true;
             }
         }
@@ -1729,6 +2004,18 @@ namespace Hourglass.Windows
             {
                 this.TitleTextBox.SelectAll();
             }
+        }
+
+        /// <summary>
+        /// Invoked when the <see cref="TitleTextBox"/> content changes.
+        /// </summary>
+        /// <param name="sender">The <see cref="TitleTextBox"/>.</param>
+        /// <param name="e">The event data.</param>
+        private void TitleTextBoxTextChanged(object sender, TextChangedEventArgs e)
+        {
+            this.Timer.Options.Title = string.IsNullOrWhiteSpace(this.TitleTextBox.Text)
+                ? string.Empty
+                : this.TitleTextBox.Text;
         }
 
         /// <summary>
@@ -1817,6 +2104,11 @@ namespace Hourglass.Windows
         /// <param name="e">The event data.</param>
         private void WindowMouseDown(object sender, MouseButtonEventArgs e)
         {
+            if (e.ChangedButton == MouseButton.Left)
+            {
+                this.DragMove();
+            }
+
             if (e.OriginalSource is Panel)
             {
                 this.CancelOrReset();
@@ -1899,5 +2191,26 @@ namespace Hourglass.Windows
         }
 
         #endregion
+
+        /// <summary>
+        /// Invoked when the <see cref="NextTimerComboBox"/> content changes.
+        /// </summary>
+        /// <param name="sender">The <see cref="NextTimerComboBox"/>.</param>
+        /// <param name="e">The event data.</param>
+        private void NextTimerComboBoxSelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            TimerTitleRepresentation SelectedValue = (TimerTitleRepresentation)(this.NextTimerComboBox.SelectedValue);
+            this.Timer.Options.NextTimerTitle = SelectedValue.Value;
+        }
+
+        /// <summary>
+        /// Invoked when the <see cref="NextTimerComboBox"/> drop down is opened.  Populates the current list of saved timers that can be selected.
+        /// </summary>
+        /// <param name="sender">The <see cref="NextTimerComboBox"/>.</param>
+        /// <param name="e">The event data.</param>
+        private void NextTimerComboBoxDropDownOpened(object sender, System.EventArgs e)
+        {
+            this.PopulateNextTimerComboBox();
+        }
     }
 }

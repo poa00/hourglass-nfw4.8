@@ -54,9 +54,17 @@ namespace Hourglass.Managers
         /// Gets a list of the currently loaded timers that are not bound to any <see cref="TimerWindow"/> and are not
         /// <see cref="TimerState.Stopped"/>.
         /// </summary>
-        public IList<Timer> ResumableTimers
+        public IList<Timer> BackgroundTimers
         {
-            get { return this.timers.Where(t => t.State != TimerState.Stopped && !IsBoundToWindow(t)).ToList(); }
+            get { return this.timers.Where(t => t.State != TimerState.Stopped && t.State != TimerState.Saved && !IsBoundToWindow(t)).ToList(); }
+        }
+
+        /// <summary>
+        /// Gets a list of the <see cref="TimerState.Saved"/> timers.
+        /// </summary>
+        public IList<Timer> SavedTimers
+        {
+            get { return this.timers.Where(t => t.State == TimerState.Saved).ToList(); }
         }
 
         /// <summary>
@@ -102,6 +110,18 @@ namespace Hourglass.Managers
                 throw new InvalidOperationException();
             }
 
+            if (timer.State == TimerState.Saved)
+            {
+                foreach (Timer currentTimer in this.SavedTimers)
+                {
+                    if (currentTimer.Options.Title.Equals(timer.Options.Title))
+                    {
+                        this.timers.Remove(currentTimer);
+                    }
+                }
+            }
+
+            timer.Expired += this.TimerExpired;
             this.timers.Insert(0, timer);
         }
 
@@ -118,6 +138,7 @@ namespace Hourglass.Managers
                 throw new InvalidOperationException();
             }
 
+            timer.Expired -= this.TimerExpired;
             this.timers.Remove(timer);
             timer.Dispose();
         }
@@ -135,11 +156,19 @@ namespace Hourglass.Managers
         }
 
         /// <summary>
-        /// Clears the <see cref="ResumableTimers"/>.
+        /// Clears the <see cref="BackgroundTimers"/>.
         /// </summary>
-        public void ClearResumableTimers()
+        public void ClearBackgroundTimers()
         {
-            this.Remove(this.ResumableTimers);
+            this.Remove(this.BackgroundTimers);
+        }
+
+        /// <summary>
+        /// Clears the <see cref="SavedTimers"/>.
+        /// </summary>
+        public void ClearSavedTimers()
+        {
+            this.Remove(this.SavedTimers);
         }
 
         /// <summary>
@@ -151,5 +180,42 @@ namespace Hourglass.Managers
             return Application.Current != null
                 && Application.Current.Windows.OfType<TimerWindow>().Any(w => w.Timer == timer);
         }
+
+        #region Timer Events
+        /// <summary>
+        /// Invoked when the timer expires.
+        /// </summary>
+        /// <param name="sender">The timer.</param>
+        /// <param name="e">The event data.</param>
+        private void TimerExpired(object sender, EventArgs e)
+        {
+            Timer expiredTimer = sender as Timer;
+            if (!String.IsNullOrEmpty(expiredTimer.Options.NextTimerTitle))
+            {
+                this.StartNextTimer(expiredTimer.Options.NextTimerTitle);
+            }
+        }
+
+        /// <summary>
+        /// Starts the timer that is specified to follow the current timer.
+        /// </summary>
+        private void StartNextTimer(String nextTimerTitle)
+        {
+            foreach (Timer availableTimer in this.SavedTimers)
+            {
+                if (nextTimerTitle.Equals(availableTimer.Options.Title))
+                {
+                    TimerWindow window = new TimerWindow();
+                    Timer nextTimer = new Timing.Timer(availableTimer.ToTimerInfo());
+                    // Start the timer before adding it to the collection to keep the Saved timer from being deleted
+                    nextTimer.Start(nextTimer.TimerStart);
+                    this.Add(nextTimer);                    
+                    window.Show(nextTimer);
+                    break;
+                }
+            }
+        }
+
+        #endregion
     }
 }

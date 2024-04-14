@@ -37,12 +37,12 @@ namespace Hourglass.Properties {
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("False")]
-        public bool OpenSavedTimersOnStartup {
+        public bool OpenBackgroundTimersOnStartup {
             get {
-                return ((bool)(this["OpenSavedTimersOnStartup"]));
+                return ((bool)(this["OpenBackgroundTimersOnStartup"]));
             }
             set {
-                this["OpenSavedTimersOnStartup"] = value;
+                this["OpenBackgroundTimersOnStartup"] = value;
             }
         }
         
